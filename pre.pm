@@ -11,37 +11,16 @@ use POE::Component::IRC::Common; # Needed for stripping message colors and forma
 use DBI;                         # Needed for DB connection
 use experimental 'smartmatch';   # Smartmatch (Regex) support for newer perl versions
 
+use File::Basename;
+use Config::IniFiles;
 
-# (My)SQL settings
-my $DB_NAME     = 'database';      # DB name
-my $DB_TABLE    = 'table';   # TABLE name
-my $DB_HOST     = 'host';   # DB host
-my $DB_USER     = 'user';      # DB user
-my $DB_PASSWD   = 'password';      # DB user passwd
 
-# DB Columns
-my $COL_PRETIME = 'pretime';     # pre timestamp
-my $COL_RELEASE = 'release';     # release name
-my $COL_SECTION = 'section';     # section name
-my $COL_FILES   = 'files';       # number of files
-my $COL_SIZE    = 'size';        # release size
-my $COL_STATUS  = 'status';      # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
-my $COL_REASON  = 'reason';      # reason for nuke/unnuke/delpre/undelpre
-my $COL_NETWORK = 'network';     # network from which we got the nuke/whatever reason
-my $COL_GROUP   = 'group';       # groupname
-my $COL_GENRE   = 'genre';       # genre of product
-my $COL_URL     = 'url';         # productlink or something similiar
-my $COL_MP3INFO = 'mp3info';     # mp3info
-my $COL_VIDEOINFO = 'videoinfo'; # videoinfo
-
-# If you want to do more advanced announce stuff, have a look at the announceX subs.
-my $ANNOUNCE_NETWORK = 'network';
-my $ANNOUNCE_CHANNEL = '#pre';
-
+# Some hardcoded settings, however you can overwrite them in your settings.ini
 my %STATUS_COLORS = ("NUKE" => 4, "MODNUKE" => 4, "UNNUKE" => 5, "DELPRE" => 5, "UNDELPRE" => 5);
-
-# ONLY CHANGES THIS IF YOU KNOW WHAT YOU DO!
 my %STATUS_TYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
+
+# Load config
+loadConfig(dirname(__FILE__) . "/settings.ini");
 
 
 # Module only accessible for users.
@@ -477,6 +456,43 @@ sub announceAddVideoInfo {
   my $self = shift;
   my ($release, $videoinfo) = @_;
 }
+# Load Config Ini file and set variables we need
+# Params (absolute_filepath)
+# dirname(__FILE__) . "/settings.ini"
+sub loadConfig {
+  my $absolute_filepath = shift;
+  my $cfg = Config::IniFiles->new( -file =>  $absolute_filepath);
 
+  our $DB_NAME = $cfg->val( 'settings', 'DB_NAME' );
+  our $DB_TABLE = $cfg->val( 'settings', 'DB_TABLE' );
+  our $DB_HOST = $cfg->val( 'settings', 'DB_HOST' );
+  our $DB_USER = $cfg->val( 'settings', 'DB_USER' );
+  our $DB_PASSWD = $cfg->val( 'settings', 'DB_PASSWD' );
+
+  our $COL_PRETIME = $cfg->val( 'settings', 'COL_PRETIME' );
+  our $COL_RELEASE = $cfg->val( 'settings', 'COL_RELEASE' );
+  our $COL_SECTION = $cfg->val( 'settings', 'COL_SECTION' );
+  our $COL_FILES = $cfg->val( 'settings', 'COL_FILES' );
+  our $COL_SIZE = $cfg->val( 'settings', 'COL_SIZE' );
+  our $COL_STATUS = $cfg->val( 'settings', 'COL_STATUS' );
+  our $COL_REASON = $cfg->val( 'settings', 'COL_REASON' );
+  our $COL_NETWORK = $cfg->val( 'settings', 'COL_NETWORK' );
+  our $COL_GROUP = $cfg->val( 'settings', 'COL_GROUP' );
+  our $COL_GENRE = $cfg->val( 'settings', 'COL_GENRE' );
+  our $COL_URL = $cfg->val( 'settings', 'COL_URL' );
+  our $COL_MP3INFO = $cfg->val( 'settings', 'COL_MP3INFO' );
+  our $COL_VIDEOINFO = $cfg->val( 'settings', 'COL_VIDEOINFO' );
+  our $ANNOUNCE_NETWORK = $cfg->val( 'settings', 'ANNOUNCE_NETWORK' );
+  our $ANNOUNCE_CHANNEL = $cfg->val( 'settings', 'ANNOUNCE_CHANNEL' );
+
+
+  if($cfg->exists('settings', 'STATUS_COLORS')){
+    %STATUS_COLORS = $cfg->val( 'settings', 'STATUS_COLORS' );
+  }
+  if($cfg->exists('settings', 'STATUS_TYPES')){
+    %STATUS_TYPES = $cfg->val( 'settings', 'STATUS_TYPES' );
+  }
+  print "[PREBot] Loaded Config from ".$absolute_filepath."\n";
+}
 
 1;
