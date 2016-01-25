@@ -5,7 +5,6 @@
 ## #
 
 package pre;
-use Switch;
 use base 'ZNC::Module';
 
 use POE::Component::IRC::Common; # Needed for stripping message colors and formatting
