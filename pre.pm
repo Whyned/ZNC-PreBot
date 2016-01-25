@@ -11,6 +11,14 @@ use POE::Component::IRC::Common; # Needed for stripping message colors and forma
 use DBI;                         # Needed for DB connection
 use experimental 'smartmatch';   # Smartmatch (Regex) support for newer perl versions
 
+
+# (My)SQL settings
+my $DB_NAME     = 'database';      # DB name
+my $DB_TABLE    = 'table';   # TABLE name
+my $DB_HOST     = 'host';   # DB host
+my $DB_USER     = 'user';      # DB user
+my $DB_PASSWD   = 'password';      # DB user passwd
+
 # DB Columns
 my $COL_PRETIME = 'pretime';     # pre timestamp
 my $COL_RELEASE = 'release';     # release name
@@ -27,11 +35,14 @@ my $COL_MP3INFO = 'mp3info';     # mp3info
 my $COL_VIDEOINFO = 'videoinfo'; # videoinfo
 
 # If you want to do more advanced announce stuff, have a look at the announceX subs.
-my $ANNOUNCE_NETWORK = 'puthereyournetworkname';
+my $ANNOUNCE_NETWORK = 'network';
 my $ANNOUNCE_CHANNEL = '#pre';
 
+my %STATUS_COLORS = ("NUKE" => 4, "MODNUKE" => 4, "UNNUKE" => 5, "DELPRE" => 5, "UNDELPRE" => 5);
+
 # ONLY CHANGES THIS IF YOU KNOW WHAT YOU DO!
-my %STATUSTYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
+my %STATUS_TYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
+
 
 # Module only accessible for users.
 # Comment the next line if you want to make it global accessible
@@ -164,14 +175,14 @@ sub OnChanMsg {
                 $self->announceAddVideoInfo($release, $addinfo);
               }
         # NUKE/MODNUKE/UNNUKE/DELPRE/UNDELPRE (Status Change)
-        } elsif (exists $STATUSTYPES{$type}) {
+        } elsif (exists $STATUS_TYPES{$type}) {
               # Order: NUKE RELEASE REASON NUKENET
 
               my $release = $splitted_message[1];
               my $reason = $splitted_message[2];
               my $network = $splitted_message[3];
 
-              my $status = $STATUSTYPES{$type};
+              my $status = $STATUS_TYPES{$type};
 
               # DEBUG -> are all the matches correct?
               $self->PutModule("tpye" . $type.":".$release." - ".$reason." network:".$network);
@@ -405,7 +416,7 @@ sub typeToStatus {
 sub announcePre {
   my $self = shift;
   my ($release, $section) = @_;
-  $self->sendAnnounceMessage("[PRE] [$section] - $release");
+  $self->sendAnnounceMessage("7[9PRE7] 7[10$section7] 08- $release");
 
 }
 
@@ -422,7 +433,9 @@ sub announceAddOld {
 sub announceStatusChange {
   my $self = shift;
   my ($release, $type, $reason, $network) = @_;
-  $self->sendAnnounceMessage("[$type] - $release - $reason - $network");
+  my $color = $STATUS_COLORS{$type};
+  print "xxxxxx".$color;
+  $self->sendAnnounceMessage("7[".$color.$type."7] 08- $release 08- 7[6$reason7] 08- 7[12$network7]");
 }
 
 # announce info, in the moment we do nothing, but maybe you want to do something?
