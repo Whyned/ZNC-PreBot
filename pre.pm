@@ -107,8 +107,8 @@ sub OnChanMsg {
               my $release = returnEmptyIfDash($splitted_message[1]);
               my $section = returnEmptyIfDash($splitted_message[2]);
               my $pretime = returnEmptyIfDash($splitted_message[3]);
-              my $size    = returnEmptyIfDash($splitted_message[4]);
-              my $files   = returnEmptyIfDash($splitted_message[5]);
+              my $files   = returnEmptyIfDash($splitted_message[4]);
+              my $size    = returnEmptyIfDash($splitted_message[5]);
               my $genre   = returnEmptyIfDash($splitted_message[6]);
               my $reason  = returnEmptyIfDash($splitted_message[7]);
               my $network = returnEmptyIfDash(join(' ',  splice(@splitted_message, 7))); # network contains maybe whitespaces, so we want everything to the end
