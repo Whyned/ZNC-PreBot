@@ -1,0 +1,430 @@
+##
+# PreBot module for ZNC IRC Bouncer
+# Author: m4luc0
+# Version: 1.0
+## #
+
+package PRE::Bot;
+use base 'ZNC::Module';
+
+use POE::Component::IRC::Common; # Needed for stripping message colors and formatting
+use experimental 'smartmatch';   # Smartmatch (Regex) support for newer perl versions
+
+require 'precore.pl';
+
+
+
+# Load config
+loadConfig(dirname(__FILE__) . "/settings.ini");
+
+
+# Module only accessible for users.
+# Comment the next line if you want to make it global accessible
+#sub module_types { $ZNC::CModInfo::UserModule }
+
+# Module description
+sub description {
+    "PreBot Perl module for ZNC"
+}
+
+# On channel message
+sub OnChanMsg {
+    # get message informations
+    my $self = shift;
+    my ($nick, $chan, $message) = @_;
+
+    # Strip colors and formatting
+    if (POE::Component::IRC::Common::has_color($message)) {
+        $message = POE::Component::IRC::Common::strip_color($message);
+    }
+    if (POE::Component::IRC::Common::has_formatting($message)) {
+        $message = POE::Component::IRC::Common::strip_formatting($message);
+    }
+    # DEBUG -> everything is working till here so go on and send me the message
+    # $self->PutModule("[".$chan->GetName."] <".$nick->GetNick."> ".$message);
+
+    # Split message into words (without dash)
+    my @splitted_message = split / /, $message;
+
+    # Check if message starts with a "!""
+    my $match = substr($splitted_message[0], 0, 1) eq "!";
+
+    if($match){
+        # Get the type (it's the command), uppercased!
+        $type = uc(substr($splitted_message[0], 1));
+        # Compare different types of announces,
+        # assuming that there are common types like pre, (mod)nuke, unnuke, delpre, undelpre
+
+        # ADDPRE / SITEPRE
+        if ($type eq "ADDPRE" || $type eq "SITEPRE") {
+              # Regex works for a lot of prechans but not for all.
+              # Maybe you have to change this.
+              # Order: ADDPRE/SITEPRE RELEASE SECTION
+
+              #Pretime is now
+              my $pretime = time();
+
+              my $release = $splitted_message[1];
+              my $section = $splitted_message[2];
+
+
+              my $group = getGroupFromRelease($release);
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule($type.": ".$section." > ".$release." - ".$group);
+
+              # Add Pre
+              $self->addPre($pretime, $release, $section, $group);
+              # Announce Pre
+              $self->announcePre($release, $section);
+
+        # ADDOLD
+        } elsif ($type eq "ADDOLD") {
+              print $message;
+              my $release = returnEmptyIfDash($splitted_message[1]);
+              my $section = returnEmptyIfDash($splitted_message[2]);
+              my $pretime = returnEmptyIfDash($splitted_message[3]);
+              my $size    = returnEmptyIfDash($splitted_message[4]);
+              my $files   = returnEmptyIfDash($splitted_message[5]);
+              my $genre   = returnEmptyIfDash($splitted_message[6]);
+              my $reason  = returnEmptyIfDash($splitted_message[7]);
+              my $network = returnEmptyIfDash(join(' ',  splice(@splitted_message, 7))); # network contains maybe whitespaces, so we want everything to the end
+
+              my $group = getGroupFromRelease($release);
+
+              print "\nxxx$release\n";
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("$type : $section - $release - $group - $pretime - $size - $files - $genre - $reason - $network");
+
+              # Add Pre
+              $self->addPre($pretime, $release, $section, $group);
+
+              # Add Info
+              $self->addInfo($release, $files, $size);
+
+              # Add genre
+              $self->addGenre($release, $genre);
+
+              # Announce (we handle it like a pre, maybe you want to do it differently)
+              $self->announceAddOld($release, $section, $pretime, $size, $files, $genre, $reason, $network);
+
+        # INFO
+        } elsif ($type eq "INFO") {
+              # Order: INFO RELEASE FILES SIZE
+
+              my $release = $splitted_message[1];
+              my $files = $splitted_message[2];
+        	    $files =~ s/F//g;
+              my $size = $splitted_message[3];
+        	    $size =~ s/MB//g;
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule($type. " release: ".$release." files: ".$files." - size:".$size);
+
+              # Add Info
+              $self->addInfo($release, $files, $size);
+
+              # Announce
+              $self->announceInfo($release, $files, $size);
+
+        # GENRE/ADDURL/ADDMP3INFO/ADDVIDEOINFO
+        } elsif ($type ~~ ["GENRE", "ADDURL", "ADDMP3INFO", "ADDVIDEOINFO"]) {
+              my $release = $splitted_message[1];
+              my $addinfo  =  join(' ',  splice(@splitted_message, 2));
+              # DEBUG -> are all the matches correct?
+              $self->PutModule($type. " release: ".$release." info: ".$addinfo);
+
+              if($type eq "GENRE"){
+                $self->addGenre($release, $addinfo);
+                $self->announceGenre($release, $addinfo);
+              }elsif($type eq "ADDURL"){
+                $self->addUrl($release, $addinfo);
+                $self->announceAddUrl($release, $addinfo);
+              }elsif($type eq "ADDMP3INFO"){
+                $self->addMp3info($release, $addinfo);
+                $self->announceAddMp3Info($release, $addinfo);
+              }elsif($type eq "ADDVIDEOINFO"){
+                $self->addVideoinfo($release, $addinfo);
+                $self->announceAddVideoInfo($release, $addinfo);
+              }
+        # NUKE/MODNUKE/UNNUKE/DELPRE/UNDELPRE (Status Change)
+      } elsif ($type ~~ ["NUKE", "MODNUKE", "UNNUKE", "DELPRE", "UNDELPRE"]) {
+
+              # Workaround for modnukes, we want to handle them like nukes
+              if($type eq "MODNUKE"){
+                $type = "NUKE";
+              }
+              # Order: NUKE RELEASE REASON NUKENET
+              my $release = $splitted_message[1];
+              my $reason = $splitted_message[2];
+              my $network = $splitted_message[3];
+
+              my $status = $STATUS_TYPES{$type};
+
+              # DEBUG -> are all the matches correct?
+              $self->PutModule("tpye" . $type.":".$release." - ".$reason." network:".$network);
+              # Nuke
+              $self->changeStatus($release, $status, $reason, $network);
+
+              # Announce Nuke
+    	        $self->announceStatusChange($release, $type, $reason, $network);
+
+        }
+    }
+    return $ZNC::CONTINUE;
+}
+##
+# PreBot functions
+##
+# Add Pre
+# Params (pretime, release, section, group)
+sub addPre {
+    my $self = shift;
+    # get attribute values
+    my ($pretime, $release, $section, $group) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule("Time: ".$pretime." - RLS: ".$release." - Section: ".$section." - Group: ".$group);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add release
+    my $query = "INSERT INTO ".$DB_TABLE." (`".$COL_PRETIME."`, `".$COL_RELEASE."`, `".$COL_SECTION."`, `".$COL_GROUP."`) VALUES( ?, ?, ?, ? );";
+    # Execute Query
+    $dbh->do($query, undef, $pretime, $release, $section, $group) or die $dbh->errstr;
+
+    # Disconnect Database
+    $dbh->disconnect();
+
+}
+# Info
+# Params (release, files, size)
+sub addInfo {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $files, $size) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_FILES."` = ? , `".$COL_SIZE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    # Execute Query
+    $dbh->do($query, undef, $files, $size, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+
+# Genre
+# Params (release, genre)
+sub addGenre {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $genre) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_GENRE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $genre, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+# Url
+# Params (release, url)
+sub addUrl {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $url) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_URL."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $url, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+
+# Mp3info
+# Params (release, mp3info)
+sub addMp3info {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $mp3info) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_MP3INFO."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $mp3info, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+
+# Videoinfo
+# Params (release, mp3info)
+sub addVideoinfo {
+    my $self = shift;
+
+    # get attribute values
+    my ($release, $videoinfo) = @_;
+    # DEBUG -> check if the variables are correct
+    # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Add Release Info
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_VIDEOINFO."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
+    print "\nzzz$query\n";
+    # Execute Query
+    $dbh->do($query, undef, $videoinfo, $release) or die $dbh->errstr;
+    # Disconnect Database
+    $dbh->disconnect();
+}
+
+# Nuke, Unnuke, Delpre, Undelpre
+# Params (release, status, reason, network)
+sub changeStatus {
+    my $self = shift;
+    # get attribute values
+    my ($release, $status, $reason , $network) = @_;
+    # DEBUG -> check if the variables are correct
+    #$self->PutModule("Type: " .$type." - Release: ".$release." - Reason: ".$reason);
+
+    my $type = $self->statusToType($status);
+    $self->PutModule("$type $release - Reason: $reason ($network)");
+
+    # Connect to Database
+    my $dbh = $self->getDBI();
+
+    # Set Query -> Change release status
+    # 0:pre; 1:nuked; 2:unnuked; 3:delpred; 4:undelpred;
+    my $query = "UPDATE ".$DB_TABLE." SET `".$COL_STATUS."` = ? , `".$COL_REASON."` = ?, `".$COL_NETWORK."` = ? WHERE `".$COL_RELEASE."` LIKE ?;";
+
+    #$self->PutModule($query);
+    # Execute Query
+    $dbh->do($query, undef, $status, $reason, $network, $release) or die $dbh->errstr;
+
+    #debug mysql
+    #($sql_update_result) = $dbh->fetchrow;
+    #$self->PutModule("WHAT: " . $sql_update_result);
+    # Disconnect Database
+    $dbh->disconnect();
+}
+
+
+# Returns empty string if $1 is a dash ("-")
+# Params: (string)
+sub returnEmptyIfDash {
+  $str = shift;
+  print "$str\n";
+  if($str eq "-"){
+    return "";
+  }
+
+  return $str;
+}
+
+
+
+# Send a message to announce channel
+# Params: (message)
+sub sendAnnounceMessage {
+  my $self = shift;
+  my $message = shift;
+  $self->GetUser->FindNetwork($ANNOUNCE_NETWORK)->PutIRC("PRIVMSG ".$ANNOUNCE_CHANNEL." :".$message);
+}
+
+
+
+###
+# ANNNOUNCE SUBS
+###
+
+
+#announce a pre
+# Params: (release, section)
+sub announcePre {
+  my $self = shift;
+  my ($release, $section) = @_;
+  $self->sendAnnounceMessage("7[9PRE7] 7[10$section7] 08- $release");
+
+}
+
+#announce a old pre (currently we just do a announcePre, but maybe we want to do more?)
+# Params: (release, section, pretime, size, files, genre, reason, network)
+sub announceAddOld {
+  my $self = shift;
+  my ($release, $section, $pretime, $size, $files, $genre, $reason, $network) = @_;
+  $self->announcePre($release, $section);
+}
+
+#announce a status Change
+# Params: (release, status, reason, network)
+sub announceStatusChange {
+  my $self = shift;
+  my ($release, $type, $reason, $network) = @_;
+  my $color = $STATUS_COLORS{$type};
+  print "xxxxxx".$color;
+  $self->sendAnnounceMessage("7[".$color.$type."7] 08- $release 08- 7[6$reason7] 08- 7[12$network7]");
+}
+
+# announce info, in the moment we do nothing, but maybe you want to do something?
+# Params: (release, files, size)
+sub announceInfo {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $files, $size) = @_;
+
+}
+
+# announce genre, in the moment we do nuffin
+# Params: (release, genre)
+sub announceGenre {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $genre) = @_;
+}
+
+# announce addurl, in the moment we do nuffin
+# Params: (release, url)
+sub announceAddUrl {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $url) = @_;
+}
+# announce addmp3info, in the moment we do nuffin
+# Params: (release, mp3info)
+sub announceAddMp3Info {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $mp3info) = @_;
+}
+
+# announce addvideoinfo, in the moment we do nuffin
+# Params: (release, videoinfo)
+sub announceAddVideoInfo {
+  return; # Uncomment if you want to do stuff with this
+  my $self = shift;
+  my ($release, $videoinfo) = @_;
+}
+
+
+1;
