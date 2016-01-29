@@ -42,8 +42,7 @@ sub OnChanMsg {
 
     # Check if user/chan is allowed to feed us
     if(!isAllowed($chan->GetName(), $nick->GetNick())){
-      print "#### $chan $nick not in Whitelist";
-      print $nick;
+      print "#### ".$chan->GetName()." ".$nick->GetNick()." not in Whitelist\n";
       return $ZNC::CONTINUE;
     }
 
@@ -94,10 +93,6 @@ sub OnChanMsg {
 
         # ADDOLD
         } elsif ($type eq "ADDOLD") {
-              if(length($splitted_message) != 8){
-                print "[PreBot] recieved wrong format: ".@splitted_message."\n";
-                return;
-              }
               my $release = returnEmptyIfDash($splitted_message[1]);
               my $section = returnEmptyIfDash($splitted_message[2]);
               my $pretime = returnEmptyIfDash($splitted_message[3]);
