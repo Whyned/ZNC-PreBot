@@ -19,6 +19,8 @@ use Config::IniFiles;
 my %STATUS_COLORS = ("NUKE" => 4, "MODNUKE" => 4, "UNNUKE" => 5, "DELPRE" => 5, "UNDELPRE" => 5);
 my %STATUS_TYPES = ( "NUKE" => 1, "MODNUKE" => 1, "UNNUKE" => 2, "DELPRE" => 3, "UNDELPRE" => 4);
 
+my %WHITELIST;
+
 # Load config
 loadConfig(dirname(__FILE__) . "/settings.ini");
 
@@ -37,6 +39,13 @@ sub OnChanMsg {
     # get message informations
     my $self = shift;
     my ($nick, $chan, $message) = @_;
+
+    # Check if user/chan is allowed to feed us
+    if(!isAllowed($chan->GetName(), $nick->GetNick())){
+      print "#### $chan $nick not in Whitelist";
+      print $nick;
+      return $ZNC::CONTINUE;
+    }
 
     # Strip colors and formatting
     if (POE::Component::IRC::Common::has_color($message)) {
@@ -85,12 +94,15 @@ sub OnChanMsg {
 
         # ADDOLD
         } elsif ($type eq "ADDOLD") {
-              print $message;
+              if(length($splitted_message) != 8){
+                print "[PreBot] recieved wrong format: ".@splitted_message."\n";
+                return;
+              }
               my $release = returnEmptyIfDash($splitted_message[1]);
               my $section = returnEmptyIfDash($splitted_message[2]);
               my $pretime = returnEmptyIfDash($splitted_message[3]);
-              my $size    = returnEmptyIfDash($splitted_message[4]);
-              my $files   = returnEmptyIfDash($splitted_message[5]);
+              my $files   = returnEmptyIfDash($splitted_message[4]);
+              my $size    = returnEmptyIfDash($splitted_message[5]);
               my $genre   = returnEmptyIfDash($splitted_message[6]);
               my $reason  = returnEmptyIfDash($splitted_message[7]);
               my $network = returnEmptyIfDash(join(' ',  splice(@splitted_message, 7))); # network contains maybe whitespaces, so we want everything to the end
@@ -110,6 +122,9 @@ sub OnChanMsg {
 
               # Add genre
               $self->addGenre($release, $genre);
+
+              # Add nuke
+              $self->changeStatus($release, $STATUS_TYPES{NUKE}, $reason, $network);
 
               # Announce (we handle it like a pre, maybe you want to do it differently)
               $self->announceAddOld($release, $section, $pretime, $size, $files, $genre, $reason, $network);
@@ -229,10 +244,6 @@ sub addGenre {
     # $self->PutModule(.$release." - Files: ".$files." - Size: ".$size);
     # Connect to Database
     my $dbh = $self->getDBI();
-sub getGroupFromRelease {
-  $match = $1 ~~ m/-(\w+)$/;
-  return $1;
-}
 
     # Set Query -> Add Release Info
     my $query = "UPDATE ".$DB_TABLE." SET `".$COL_GENRE."` = ? WHERE `".$COL_RELEASE."` LIKE ? ;";
@@ -350,7 +361,8 @@ sub returnEmptyIfDash {
 
 # Get a database connection
 sub getDBI {
-  return DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD) or die "Couldn't connect to database: " . DBI->errstr;
+  my $dbi = DBI->connect("DBI:mysql:database=$DB_NAME;host=$DB_HOST", $DB_USER, $DB_PASSWD) or die "Couldn't connect to database: " . DBI->errstr;
+  return $dbi;
 }
 
 # Extract the groupname of a release/dirname
@@ -373,8 +385,8 @@ sub sendAnnounceMessage {
 # Return: Type (String)
 sub statusToType {
   my $status = shift;
-  my %rstatustypes = reverse %STATUSTYPES;
-  return $rstatustypes{$status};
+  my %rstatus_types = reverse %STATUS_TYPES;
+  return $rstatus_types{$status};
 }
 
 # Convert Status (integer) to String (type)
@@ -382,7 +394,7 @@ sub statusToType {
 # Return: Type (String)
 sub typeToStatus {
   my $type = shift;
-  return $STATUSTYPES{$type};
+  return $STATUS_TYPES{$type};
 }
 
 ###
@@ -456,6 +468,7 @@ sub announceAddVideoInfo {
   my $self = shift;
   my ($release, $videoinfo) = @_;
 }
+
 # Load Config Ini file and set variables we need
 # Params (absolute_filepath)
 # dirname(__FILE__) . "/settings.ini"
@@ -485,14 +498,39 @@ sub loadConfig {
   our $ANNOUNCE_NETWORK = $cfg->val( 'settings', 'ANNOUNCE_NETWORK' );
   our $ANNOUNCE_CHANNEL = $cfg->val( 'settings', 'ANNOUNCE_CHANNEL' );
 
-
   if($cfg->exists('settings', 'STATUS_COLORS')){
     %STATUS_COLORS = $cfg->val( 'settings', 'STATUS_COLORS' );
   }
   if($cfg->exists('settings', 'STATUS_TYPES')){
     %STATUS_TYPES = $cfg->val( 'settings', 'STATUS_TYPES' );
   }
+
+
+  if($cfg->SectionExists('whitelist-bot')){
+    foreach($cfg->Parameters('whitelist-bot')){
+      $channel = lc($_);
+      @users = split(/\s*,\s*/, lc($cfg->val('whitelist-bot', $channel)));
+      $WHITELIST{$channel} = [@users];
+    }
+  }
   print "[PREBot] Loaded Config from ".$absolute_filepath."\n";
+}
+
+# Check if user/channel are in $WHITELIST
+# Params: (channel, user)
+sub isAllowed {
+  #my $self = shift;
+  my ($channel, $user) = @_;
+  $channel = lc($channel);
+  $user = lc($user);
+  # Delete starting #
+  if(substr($channel, 0, 1) eq "#"){
+    $channel = substr($channel, 1);
+  }
+  if(!%WHITELIST || (exists $WHITELIST{$channel} && $user ~~ $WHITELIST{$channel})){
+    return 1;
+  }
+  return 0;
 }
 
 1;
