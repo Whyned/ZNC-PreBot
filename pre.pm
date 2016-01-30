@@ -115,11 +115,16 @@ sub OnChanMsg {
               # Add Info
               $self->addInfo($release, $files, $size);
 
-              # Add genre
-              $self->addGenre($release, $genre);
+              # Add genre if we have it
+              if($genre ne ""){
+                $self->addGenre($release, $genre);
+              }
 
-              # Add nuke
-              $self->changeStatus($release, $STATUS_TYPES{NUKE}, $reason, $network);
+              # Add nuke if we have a reason
+              if($reason ne ""){
+                $self->changeStatus($release, $STATUS_TYPES{NUKE}, $reason, $network);
+              }
+
 
               # Announce (we handle it like a pre, maybe you want to do it differently)
               $self->announceAddOld($release, $section, $pretime, $size, $files, $genre, $reason, $network);
