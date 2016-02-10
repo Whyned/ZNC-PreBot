@@ -149,13 +149,13 @@ sub OnChanMsg {
               $self->announceInfo($release, $files, $size);
 
         # GENRE/ADDURL/ADDMP3INFO/ADDVIDEOINFO
-        } elsif ($type ~~ ["GENRE", "ADDURL", "ADDMP3INFO", "ADDVIDEOINFO"]) {
+        } elsif ($type ~~ ["GN", "ADDURL", "ADDMP3INFO", "ADDVIDEOINFO"]) {
               my $release = $splitted_message[1];
               my $addinfo  =  join(' ',  splice(@splitted_message, 2));
               # DEBUG -> are all the matches correct?
               $self->PutModule($type. " release: ".$release." info: ".$addinfo);
 
-              if($type eq "GENRE"){
+              if($type eq "GN"){
                 $self->addGenre($release, $addinfo);
                 $self->announceGenre($release, $addinfo);
               }elsif($type eq "ADDURL"){
