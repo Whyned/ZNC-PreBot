@@ -100,7 +100,7 @@ sub OnChanMsg {
               my $size    = returnEmptyIfDash($splitted_message[5]);
               my $genre   = returnEmptyIfDash($splitted_message[6]);
               my $reason  = returnEmptyIfDash($splitted_message[7]);
-              my $network = returnEmptyIfDash(join(' ',  splice(@splitted_message, 7))); # network contains maybe whitespaces, so we want everything to the end
+              my $network = returnEmptyIfDash(join(' ',  @splitted_message[7..$#splitted_message])); # network contains maybe whitespaces, so we want everything to the end
 
               my $group = getGroupFromRelease($release);
 
@@ -151,7 +151,7 @@ sub OnChanMsg {
         # GENRE/ADDURL/ADDMP3INFO/ADDVIDEOINFO
         } elsif ($type ~~ ["GN", "ADDURL", "ADDMP3INFO", "ADDVIDEOINFO"]) {
               my $release = $splitted_message[1];
-              my $addinfo  =  join(' ',  splice(@splitted_message, 2));
+              my $addinfo  =  join(' ',  @splitted_message[2..$#splitted_message]);
               # DEBUG -> are all the matches correct?
               $self->PutModule($type. " release: ".$release." info: ".$addinfo);
 
@@ -162,7 +162,13 @@ sub OnChanMsg {
                 $self->addUrl($release, $addinfo);
                 $self->announceAddUrl($release, $addinfo);
               }elsif($type eq "ADDMP3INFO"){
-                $self->addMp3info($release, $addinfo);
+                my $release = returnEmptyIfDash($splitted_message[1]);
+                my $genre = returnEmptyIfDash($splitted_message[2]);
+                my $year = returnEmptyIfDash($splitted_message[3]);
+                my $mp3info = returnEmptyIfDash(join(' ',  @splitted_message[4..$#splitted_message]));
+                # ToDo: Put $year into own collumn?!
+                $self->addMp3info($release, $year." ".$mp3info);
+                $self->addGenre($release, $genre);
                 $self->announceAddMp3Info($release, $addinfo);
               }elsif($type eq "ADDVIDEOINFO"){
                 $self->addVideoinfo($release, $addinfo);
@@ -350,7 +356,7 @@ sub changeStatus {
 # Returns empty string if $1 is a dash ("-")
 # Params: (string)
 sub returnEmptyIfDash {
-  $str = shift;
+  my $str = shift;
   print "$str\n";
   if($str eq "-"){
     return "";
